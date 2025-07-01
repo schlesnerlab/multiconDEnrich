@@ -28,6 +28,7 @@ gsea_plots <- function(gsea_res) {
 
 ```
 
+## Progeny Enrichments
 
 ```{r parse data}
 

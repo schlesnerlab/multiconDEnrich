@@ -47,11 +47,15 @@ if (exists("snakemake")) {
     enrichments <- snakemake@params[["enrich_vars"]]
 } else {
     glmmseq_obj <-  "/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/glmmseq/glmmseq_obj.rds.gz"
-    enrichment_objs <- c("/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/glmmseq/EC_status_enrichment_obj.rds.gz", 
-            "/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/glmmseq/Aplnr_KO_enrichment_obj.rds.gz")
+    enrichment_objs <- c("/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/glmmseq/cre_status_enrichment_obj.rds.gz",
+                         "/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/glmmseq/EC_status_enrichment_obj.rds.gz",
+                         "/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/glmmseq/age_enrichment_obj.rds.gz",
+                         "/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/glmmseq/age:EC_status_enrichment_obj.rds.gz")
     coefs <- list(
-        Aplnr_KO = "Aplnr_KOKO",
-        EC_status = "EC_statustumor"
+        cre_status = "cre_statusTerf1KO",
+        EC_status = "EC_statustumor",
+        age = "ageaged",
+        "age:EC_status" = "ageaged:EC_statustumor"
     )
     enrichments <- list(
   Hallmark_gsea = list(
@@ -169,3 +173,235 @@ for (enrichment_name in names(enrichments)) {
     column_names_gp = gpar(fontsize = 8)), padding = unit(c(20, 2, 2, 2), "mm"))
 }
 ```
+
+
+
+## DecoupleR Based Enrichment results
+
+
+### Progeny
+
+```{r}
+
+library(decoupleR)
+library(tidyr)
+library(pheatmap)
+
+# Get progeny and CollectTRI from the decoupleR package
+progeny <- decoupleR::get_progeny(organism = "mouse")
+progeny <- progeny %>% dplyr::filter(!is.na(target))
+collectTRI <- decoupleR::get_collectri(organism = "mouse")
+
+mat <- glmmseq_list$norm_counts@stats$coef[, unlist(coefs)] 
+#mat <- mat[,-1]
+
+pval_mat <-  glmmseq_list$norm_counts@stats$pvals[,unlist(names(coefs))]
+pval_mat[pval_mat == 0]<- 1e-300
+# Run DecoupleR
+sample_acts <- run_mlm(mat=mat, net=progeny, .source='source', 
+                       .target='target',
+                  .mor='weight', minsize = 5)
+sample_acts_mat <- sample_acts %>%
+  dplyr::mutate(padj = p.adjust(p_value, method = "BH")) %>%
+  dplyr::filter(padj <= 0.05) %>%
+  pivot_wider(id_cols = 'condition', names_from = 'source',
+              values_from = 'score') %>%
+  tibble::column_to_rownames('condition') %>%
+  as.matrix()
+sample_acts_mat[is.na(sample_acts_mat)] <- 0
+# Choose color palette
+palette_length = 100
+my_color = colorRampPalette(c("Darkblue", "white","red"))(palette_length)
+
+my_breaks <- c(seq(-3, 0, length.out=ceiling(palette_length/2) + 1),
+               seq(0.05, 3, length.out=floor(palette_length/2)))
+
+# Plot
+ComplexHeatmap::Heatmap(sample_acts_mat)
+```
+
+### Per Condition plots for pathways
+
+```{r, dpi=300, fig.width=8, fig.height=8}
+plot_pathway <- function(net, pathway, deg, cond) {
+  df <- net %>%
+    dplyr::filter(source == pathway) %>%
+    dplyr::arrange(target) %>%
+    dplyr::mutate(ID = target, color = "3") %>%
+    tibble::column_to_rownames('target')
+  
+  inter <- sort(dplyr::intersect(rownames(deg), rownames(df)))
+  
+  df <- df[inter, ]
+  
+  df['lfc'] <- deg[inter, ]
+  
+  df <- df %>%
+    dplyr::mutate(color = dplyr::if_else(weight > 0 &
+                                           lfc > 0, '1', color)) %>%
+    dplyr::mutate(color = dplyr::if_else(weight > 0 &
+                                           lfc < 0, '2', color)) %>%
+    dplyr::mutate(color = dplyr::if_else(weight < 0 &
+                                           lfc > 0, '2', color)) %>%
+    dplyr::mutate(color = dplyr::if_else(weight < 0 &
+                                           lfc < 0, '1', color))
+  
+  colors <- rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")[c(2, 10)])
+  
+  p <- ggplot2::ggplot(data = df,
+                       mapping = ggplot2::aes(x = weight, y = lfc, color = color)) +
+    ggplot2::geom_point(size = 2.5, color = "black") +
+    ggplot2::geom_point(size = 1.5) +
+    ggplot2::scale_colour_manual(values = c(colors[2], colors[1], "grey")) +
+    ggrepel::geom_label_repel(mapping = ggplot2::aes(label = ID),label.size = 1) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      legend.position = "none",
+      axis.text = ggplot2::element_text(size = 12),       # Axis tick labels
+      axis.title = ggplot2::element_text(size = 14)       # Axis titles
+    ) +
+    ggplot2::geom_vline(xintercept = 0, linetype = 'dotted') +
+    ggplot2::geom_hline(yintercept = 0, linetype = 'dotted') +
+    ggplot2::ggtitle(pathway)
+  
+  p
+}
+# Assuming 'conditions' is a vector of your conditions
+conditions <- unique(sample_acts$condition)
+sample_acts <- sample_acts %>% dplyr::mutate(padj = p.adjust(p_value, method = "BH"))
+# Plot
+colors <- rev(RColorBrewer::brewer.pal(n = 11, name = "RdBu")[c(2, 10)])
+
+for (condition in conditions) {
+  # Filter data for the current condition
+  condition_data <- sample_acts %>%
+     dplyr::filter(condition == !!condition) %>% dplyr::filter(padj <= 0.05)
+                                      
+  #condition_data <- 
+  # Plot
+  p <- ggplot(condition_data, aes(x = reorder(source, score), y = score)) + 
+    geom_bar(aes(fill = score), stat = "identity") +
+       ggplot2::scale_fill_gradient2(low = colors[1], 
+                                   mid = "whitesmoke", 
+                                   high = colors[2], 
+                                   midpoint = 0) + 
+     ggplot2::theme_minimal() +
+     ggplot2::theme(axis.title = element_text(face = "bold", size = 15),
+              axis.text.x = ggplot2::element_text(angle = 45, 
+                                                  hjust = 1, 
+                                                  size = 12, 
+                                                  face = "bold"),
+              axis.text.y = ggplot2::element_text(size = 12, 
+                                                  face = "bold"),
+                legend.title = element_text(size = 15),
+                legend.text  = element_text(size = 13),
+              panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank())+
+    xlab("Pathways") +
+    ggtitle(condition)  # Add condition as title
+  
+  print(p)
+  single_plots<- purrr::map(condition_data$source, plot_pathway, net = progeny, deg = mat[,condition, drop = F] , cond = condition)
+  purrr::map(single_plots, print)
+  
+}
+
+
+```
+
+
+
+## Enrich TFs with collectTRI
+
+
+## Enrich against collectTRI
+```{r}
+
+
+# Run ulm
+sample_acts <- run_ulm(mat=mat[,], net=collectTRI, .source='source', .target='target',
+                  .mor='mor', minsize = 5)
+
+n_tfs <- 25
+
+# Transform to wide matrix
+sample_acts_mat <- sample_acts %>% dplyr::mutate(padj = p.adjust(p_value, method = "BH")) %>%
+  dplyr::filter(padj <= 0.05) %>%
+  pivot_wider(id_cols = 'condition', names_from = 'source',
+              values_from = 'score') %>%
+  tibble::column_to_rownames('condition') %>%
+  as.matrix()
+
+# Get top tfs with more variable means across clusters
+tfs <- sample_acts %>% dplyr::mutate(padj = p.adjust(p_value, method = "BH")) %>%
+    dplyr::filter(padj <= 0.05) %>%
+  dplyr::group_by(source) %>%
+  dplyr::summarise(std = sd(score)) %>%
+  dplyr::arrange(-abs(std)) %>%
+  head(n_tfs) %>%
+  dplyr::pull(source)
+sample_acts_mat <- sample_acts_mat[,tfs]
+
+# Scale per sample
+#sample_acts_mat <- scale(sample_acts_mat)
+sample_acts_mat[is.na(sample_acts_mat)] <- 0
+# Choose color palette
+palette_length = 100
+my_color = colorRampPalette(c("Darkblue", "white","red"))(palette_length)
+
+my_breaks <- c(seq(min(sample_acts_mat), 0, length.out=ceiling(palette_length/2) + 1),
+               seq(0.05, max(sample_acts_mat), length.out=floor(palette_length/2)))
+
+# Plot
+
+pheatmap(sample_acts_mat, border_color = NA, color=my_color , breaks = my_breaks) 
+```
+
+```{r}
+# Assuming 'conditions' is a vector of your conditions
+conditions <- unique(sample_acts$condition)
+sample_acts <- sample_acts %>% dplyr::mutate(padj = p.adjust(p_value, method = "BH"))
+for (condition in conditions) {
+  # Filter data for the current condition
+  condition_data <- sample_acts[sample_acts$condition == condition, ] %>% 
+    dplyr::filter(padj < 0.05)
+  
+  # Filter top TFs in both signs
+  f_contrast_acts <- condition_data %>%
+    dplyr::mutate(rnk = NA)
+  msk <- f_contrast_acts$score > 0
+  f_contrast_acts[msk, 'rnk'] <- rank(-f_contrast_acts[msk, 'score'])
+  f_contrast_acts[!msk, 'rnk'] <- rank(-abs(f_contrast_acts[!msk, 'score']))
+  tfs <- f_contrast_acts %>%
+    dplyr::arrange(rnk) %>%
+    head(n_tfs) %>%
+    dplyr::pull(source)
+  f_contrast_acts <- f_contrast_acts %>%
+    dplyr::filter(source %in% tfs)
+
+  # Plot
+  p <- ggplot(f_contrast_acts, aes(x = reorder(source, score), y = score)) + 
+      geom_bar(aes(fill = score), stat = "identity") +
+            ggplot2::scale_fill_gradient2(low = colors[1], 
+                                   mid = "whitesmoke", 
+                                   high = colors[2], 
+                                   midpoint = 0) + 
+     ggplot2::theme_minimal() +
+     ggplot2::theme(axis.title = element_text(face = "bold", size = 15),
+              axis.text.x = ggplot2::element_text(angle = 45, 
+                                                  hjust = 1, 
+                                                  size = 13, 
+                                                  face = "bold"),
+              axis.text.y = ggplot2::element_text(size = 13, 
+                                                  face = "bold"),
+                legend.title = element_text(size = 15),
+                legend.text  = element_text(size = 13),
+              panel.grid.major = element_blank(), 
+              panel.grid.minor = element_blank())+
+      xlab("TFs") +
+      ggtitle(condition)  # Add condition as title
+  
+  print(p)
+}
+```
+

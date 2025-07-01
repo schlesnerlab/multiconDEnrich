@@ -12,40 +12,51 @@ if (exists("snakemake")) {
     var <- snakemake@wildcards[["var"]]
     coef_id <- snakemake@params[["coef"]]
     col_data_to_plot <- snakemake@config[["pca"]][["labels"]] |> unlist()
+    group_colors <- snakemake@config[["group_colors"]]
+    print(group_colors)
 } else {
     glmmseq_obj <- "/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/glmmseq/glmmseq_obj.rds.gz"
     corrected_counts <- "/omics/odcf/analysis/OE0228_projects/VascularAging/rna_sequencing/glmmseq/counts/batch_corrected_counts.rds"
-    coef_id <- "EC_statustumor:Aplnr_KOKO"
-    var <- "EC_status:Aplnr_KO"
-    col_data_to_plot <- c("EC_status", "Aplnr_KO")
+    coef_id <- "cre_statusTerf1KO"
+    var <- "cre_status"
+    col_data_to_plot <- c("EC_status", "cre_status")
+    group_colors <- NULL
 }
-annotation_colors <- list(
-  age = c(
-    aged = "#A00101",       # Tomato
-    young = "grey"       # SteelBlue
-  ),
-  EC_status = c(
-    healthy = "#98FB98",    # PaleGreen
-    tumor = "#FF69B4"       # HotPink
-  ),
-  experiment = c(
-    apelin_2020 = "#FFD700",   # Gold
-    APLNR_KO = "#FF8C00",      # DarkOrange
-    cre_2022 = "#8A2BE2",      # BlueViolet
-    Vasc_age2020 = "#7FFF00",  # Chartreuse
-    tumor_vs_ec = "#DC143C"    # Crimson
-  ),
-  Aplnr_KO = c(
-    KO = "blue",
-    normal = "grey"
-  ),
-  Apln_treatment = c(
-    up = "#77DD77",
-    normal = "grey"
-  )
-)
 
-plot_heatmap<- function(coef,vst_obj = vst_dds, glmm_obj =  glmmseq_norm_counts,
+if (length(group_colors) == 0) {
+  # Dynamically generate annotation_colors for all groups in col_data_to_plot
+  annotation_colors <- list()
+  color_palette <- function(n) {
+    # Use RColorBrewer if available, else fallback to rainbow
+    if (requireNamespace("RColorBrewer", quietly = TRUE)) {
+      cols <- RColorBrewer::brewer.pal(min(n, 8), "Set2")
+      if (n > 8) cols <- c(cols, RColorBrewer::brewer.pal(n - 8, "Set3"))
+      return(cols[1:n])
+    } else {
+      return(rainbow(n))
+    }
+  }
+  for (group in col_data_to_plot) {
+    group_levels <- NULL
+    # Try to get levels from colData if available, else fallback to unique values
+    if (exists("glmmseq_obj") && file.exists(glmmseq_obj)) {
+      coldata <- tryCatch({
+        readRDS(glmmseq_obj)$norm_counts@metadata
+      }, error = function(e) NULL)
+      if (!is.null(coldata) && group %in% colnames(coldata)) {
+        group_levels <- unique(as.character(coldata[[group]]))
+      }
+    }
+    if (is.null(group_levels)) {
+      group_levels <- c("level1", "level2") # fallback if unknown
+    }
+    annotation_colors[[group]] <- setNames(color_palette(length(group_levels)), group_levels)
+  }
+} else {
+  annotation_colors <- group_colors
+}
+
+plot_heatmap <- function(coef,vst_obj = vst_dds, glmm_obj =  glmmseq_norm_counts,
                         z_score = TRUE, use_vst = FALSE, 
                         ann_col = annotation_colors,
                         coldata_to_plot = c("age", "EC_status","Apln_treatment", "Aplnr_KO", "experiment"),
@@ -76,7 +87,7 @@ plot_heatmap<- function(coef,vst_obj = vst_dds, glmm_obj =  glmmseq_norm_counts,
       plot_data <- glmm_obj@countdata[selected_genes,]
       #plot_data <- t(scale(t(plot_data)))
 
-      coldata <- glmm_obj@metadata[,c("age", "EC_status", "experiment")]
+      coldata <- glmm_obj@metadata[,coldata_to_plot]
     }
     plot_data <- plot_data[names(selected_genes),]
     if (z_score) {
@@ -101,7 +112,10 @@ plot_heatmap<- function(coef,vst_obj = vst_dds, glmm_obj =  glmmseq_norm_counts,
     
     print(dim(plot_data))
     print(dim(cluster_data))
-    
+    if(nrow(plot_data) == 0 ) {
+      print("hit")
+      return()
+    }
     o1 = seriate(dist(plot_data), method = "DendSer")
     o2 = seriate(dist(t(plot_data)), method = "DendSer")
     if (!is.null(col_km)) {
@@ -133,7 +147,7 @@ plot_heatmap<- function(coef,vst_obj = vst_dds, glmm_obj =  glmmseq_norm_counts,
     col_list[[coef[1]]] <-colorRamp2(c(min(coef_values[selected_genes]), 0, 
                                        max(coef_values[selected_genes])), c("blue", "white", "red"))
     coef_values_anno <- rowAnnotation(
-      df=anno_df,
+      df = anno_df,
       col = col_list,
       annotation_name_rot = 45
     )
@@ -182,8 +196,7 @@ vst_dds <- readRDS(corrected_counts)
 # run_vst
 vst_dds <- vst(vst_dds[rownames(glmmseq_obj$norm_counts@countdata),])
 
-
-plot_heatmap(
+plot_res <- plot_heatmap(
   coef = c(var, coef_id),
   vst_obj = vst_dds,
   glmm_obj = glmmseq_obj$norm_counts,
@@ -197,3 +210,22 @@ plot_heatmap(
   row_km = 3,
   col_km = NULL
 )
+if(is.null(plot_res)) {
+  plot_res <- plot_heatmap(
+    coef = c(var, coef_id),
+    vst_obj = vst_dds,
+    glmm_obj = glmmseq_obj$norm_counts,
+    z_score = TRUE,
+    use_vst = TRUE,
+    coldata_to_plot = col_data_to_plot,
+    n_genes = 30,
+    qval_filt = 0.01,
+    coef_filt = 0,
+    meanExp_cutoff = 0,
+    row_km = 3,
+    col_km = NULL
+  )
+}
+if(is.null(plot_res)) {
+  write.table("", file = png_file)
+}

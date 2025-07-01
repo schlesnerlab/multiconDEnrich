@@ -84,6 +84,7 @@ if (exists("snakemake", inherits = FALSE)) {
     batch_corrected_counts <- snakemake@output[["batch_corrected_counts"]]
     uncorrected_counts <- snakemake@output[["uncorrected_counts"]]
     reference_groups <- snakemake@config[["glmmseq"]][["reference_group"]]
+    parallel <- TRUE
 } else {
     counts <- "/desktop-home/heyer/projects/Vascular_Aging/Integrative_Analysis/join_RNA/count.tsv"
     samples <- "/desktop-home/heyer/projects/Vascular_Aging/Integrative_Analysis/join_RNA/full_metadata.tsv"
@@ -121,10 +122,11 @@ stopifnot(all(all.vars(batch_correct_model) %in% colnames(sample_mat)))
 m <- model.matrix(batch_correct_model, data = sample_mat)
 
 uncorrected_dds <- DESeqDataSetFromMatrix(count_mat, colData = sample_mat, design = batch_correct_model)
+rownames(uncorrected_dds) <-  ensembl_to_symbol(rownames(uncorrected_dds))
+uncorrected_dds <- DESeq(uncorrected_dds, parallel = F)
 
 saveRDS(uncorrected_dds, file = uncorrected_counts )
-rownames(uncorrected_dds) <-  ensembl_to_symbol(rownames(uncorrected_dds))
-
+# Batch correction
 corrected_counts <- sva::ComBat_seq(as.matrix(count_mat), batch = sample_mat |> dplyr::pull(!!batch_variable), covar_mod = m)
 
 # Initialize DESeq2 object

@@ -15,7 +15,7 @@ rule batch_correct:
     log:
         "logs/glmmseq/batch_correct.log",
     resources:
-        mem_mb=8192,
+        mem_mb=8*8192,
         runtime=59,
     threads: 4
     script:
