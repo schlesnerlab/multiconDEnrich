@@ -33,7 +33,7 @@ all_conditions <- names(snakemake@config$diffexp$contrasts)
 # colData and countData must have the same sample order, but this is ensured
 # by the way we create the count matrix
 cts <- read.table(snakemake@input[["counts"]],
-  header = TRUE,
+  header = TRUE, sep = "\t",
   row.names = 1,
   check.names = FALSE
 )
@@ -42,7 +42,7 @@ cts <- read.table(snakemake@input[["counts"]],
 #sample_mat <- readr::read_tsv(samples)
 
 coldata <- read_tsv(snakemake@params[["samples"]],
-  col_names = TRUE
+  col_names = TRUE,
 ) 
 stopifnot("sample" %in% colnames(coldata))
 coldata <- coldata |> tibble::column_to_rownames(var = "sample")
@@ -95,8 +95,14 @@ dds <- dds[rowSums(counts(dds)) > ncol(dds) / 2, ]
 dds <- DESeq(dds,
   parallel = parallel
 )
+if (!is.null(snakemake@config[["cpm_filter"]])) {
+  cpm_threshold <- snakemake@config[["cpm_filter"]]
+} else {
+  cpm_threshold <- 10
+}
+
 cpm_filter <- apply(edgeR::cpm(counts(dds, normalized = T)), 1, function(x) {
-  if(length(which(x > 0.5)) > 0.2 * length(x)) {
+  if(length(which(x > cpm_threshold)) > 0.2 * length(x)) {
     val <- 1
   } else {
     val <- 0 

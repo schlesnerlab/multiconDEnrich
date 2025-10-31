@@ -112,7 +112,7 @@ if config["run_carnival"]["sample"]:
 if config["DKFZ"]:
     salmon_files.extend(
         [
-            join(BASE_ANALYSIS_DIR, "qc/multiqc_report.html"),
+            # join(BASE_ANALYSIS_DIR, "qc/multiqc_report.html"),
             join(BASE_ANALYSIS_DIR, "fpkm/all.xlsx"),
         ]
     )
@@ -141,10 +141,10 @@ rule all:
 ##### setup singularity #####
 # this container defines the underlying OS for each job when using the workflow
 # with --use-conda --use-singularity
-container: "docker://continuumio/miniconda3"
+# container: "docker://continuumio/miniconda3"
 
 
-containerized: "docker://chheyer/multiconditiondeseq2enrichment:1.1.0"
+# containerized: "docker://chheyer/multiconditiondeseq2enrichment:1.1.0"
 
 
 ##### setup report #####

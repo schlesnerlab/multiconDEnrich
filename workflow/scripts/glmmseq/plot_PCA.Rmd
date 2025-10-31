@@ -1,0 +1,43 @@
+---
+title: "PCA Plots"
+author: "Christian Heyer"
+date: "1/28/2021"
+output:
+  html_document: default
+---
+
+# PCA plots
+
+PCA analysis of count data. Using PCAtools and DESEq2 rlog data we can visualize the samples in a PCA plot,
+both with and without combatseq batch correction
+
+
+## without batch correction {.tabset}
+
+```{r}
+library(DESeq2)
+library(PCAtools)
+
+if (exists("snakemake")) {
+    uncorrected_counts <- snakemake@input[["uncorrected_counts"]]
+    batch_corrected_counts <- snakemake@input[["batch_corrected_counts"]]
+} else {
+
+}
+
+dds_obj <- readRDS(uncorrected_counts)
+
+rlog_obj <- rlog(dds_obj, blind=TRUE)
+
+rlog_mat <- assay(rlog_obj)
+```
+
+RUn PCA
+
+```{r}
+
+
+```
+
+
+### PC1

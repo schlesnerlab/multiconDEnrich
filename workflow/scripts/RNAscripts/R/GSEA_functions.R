@@ -252,6 +252,8 @@ run_gsea_query <- function(gsea_genes, de_genes, gset_name,
   } else if (tolower(run_settings$database) == "mitocarta") {
     if (species == "Mus musculus") {
       mito_genes <- RNAscripts::MitoPathways
+    } else if (species == "Homo sapiens") {
+      mito_genes <- RNAscripts::MitoPathways_hs
     } else {
       stop("Species not supported yet. MitoCarta gene set only available for Mus musculus")
     }
@@ -381,9 +383,9 @@ plot_enrichment <- function(GSEA_table, X, Y, pval = "pval", pval_threshold = 0.
     ggplot2::coord_flip() +
     ggplot2::theme_bw() +
     ggplot2::theme(legend.position = "none",
-                   axis.text.x =  ggplot2::element_text(size = 11, 
+                   axis.text.x =  ggplot2::element_text(size = 14, 
                                                         face = "bold"),
-                   axis.text.y =  ggplot2::element_text(size = 11, 
+                   axis.text.y =  ggplot2::element_text(size = 14, 
                                                         face = "bold")) 
 }
 

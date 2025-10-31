@@ -85,7 +85,7 @@ names(enrichment_objs) <- names(coefs)
 
 ## GSEA plots {.tabset}
 
-```{r GSEA_plots, echo=FALSE, fig.width= 12, fig.height = 12, results='asis'}
+```{r GSEA_plots, echo=FALSE, fig.width= 8, fig.height = 8, results='asis'}
 # Plot GSEA for all enrichments run per object
 
 

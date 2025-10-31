@@ -322,17 +322,17 @@ rule multiqc:
         ),
     # expand(join(BASE_ANALYSIS_DIR, "qc/fastqc/{unit.sample}@{unit.tissue}_fastqc.zip"), unit = units.itertuples())
     output:
-        BASE_ANALYSIS_DIR + "qc/multiqc_report.html",
-        directory(BASE_ANALYSIS_DIR + "qc/multiqc_data"),
+        BASE_ANALYSIS_DIR + "/qc/multiqc_report.html",
+        directory(BASE_ANALYSIS_DIR + "/qc/multiqc_data"),
     log:
-        BASE_ANALYSIS_DIR + "logs/multiqc.log",
+        BASE_ANALYSIS_DIR + "/logs/multiqc.log",
     params:
         extra="--data-dir",
     resources:
         mem_mb=8192 * 2,
         time_min=59 * 4,
     wrapper:
-        "v3.3.3/bio/multiqc"
+        "v7.2.0/bio/multiqc"
 
 
 rule export_xlsx:

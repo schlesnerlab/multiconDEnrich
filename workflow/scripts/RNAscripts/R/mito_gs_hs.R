@@ -9,5 +9,5 @@
 #'  \item{GeneSet}{Name of the gene set the gene in target belongs to}
 #' }
 #' 
-"MitoPathways"
+"MitoPathways_hs"
 
