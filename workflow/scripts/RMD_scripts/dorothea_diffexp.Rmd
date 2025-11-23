@@ -11,10 +11,6 @@ knitr::opts_chunk$set(
   fig.width = 12, fig.height = 12
 )
 
-if (!require(dorothea)) {
-  BiocManager::install("dorothea")
-}
-library(dorothea)
 library(decoupleR)
 library(BiocParallel)
 library(dplyr)
@@ -115,7 +111,47 @@ if (organism == "Mus musculus") {
 } else {
   stop("Organism not supported. Please set Mus musculus or Homo sapiens in the config")
 }
-net <- decoupleR::get_collectri(organism = org_name) %>% dplyr::filter(!is.na(source) & !is.na(target))
+
+# Get CollecTRI network
+net <- decoupleR::get_collectri(organism = org_name, split_complexes = FALSE) %>% 
+  dplyr::filter(!is.na(source) & !is.na(target))
+
+# Debug: Check what we got
+cat("Network dimensions before filtering:", nrow(net), "interactions\n")
+cat("Unique sources (TFs):", length(unique(net$source)), "\n")
+cat("Unique targets:", length(unique(net$target)), "\n")
+
+# Get the gene names from our expression data
+genes_in_data <- rownames(Normalized_counts)
+cat("Genes in expression data:", length(genes_in_data), "\n")
+
+# Filter network to only include genes present in our data
+# This is a simple overlap - only keep network edges where target gene exists in data
+net_filtered <- net %>%
+  dplyr::filter(target %in% genes_in_data)
+
+cat("\nNetwork after filtering to match data:\n")
+cat("  Interactions:", nrow(net_filtered), "\n")
+cat("  Unique sources (TFs):", length(unique(net_filtered$source)), "\n")
+cat("  Unique targets:", length(unique(net_filtered$target)), "\n")
+
+# Check overlap
+targets_in_net <- unique(net$target)
+overlap <- length(intersect(targets_in_net, genes_in_data))
+cat("\nGene name overlap:\n")
+cat("  Genes in network:", length(targets_in_net), "\n")
+cat("  Genes in data:", length(genes_in_data), "\n")
+cat("  Overlap:", overlap, "(", round(100*overlap/length(targets_in_net), 1), "% of network genes)\n")
+
+if (nrow(net_filtered) == 0) {
+  cat("\nWARNING: No overlap between network and data!\n")
+  cat("Sample network genes:", head(targets_in_net, 20), "\n")
+  cat("Sample data genes:", head(genes_in_data, 20), "\n")
+  stop("Network and expression data have no overlapping gene names. Check gene ID types.")
+}
+
+net <- net_filtered
+
 write(colnames(net), stderr())
 write(head(rownames(Normalized_counts)), stderr())
 write(head(net$target), stderr())
@@ -241,16 +277,13 @@ ggplot(f_contrast_acts, aes(x = reorder(source, score), y = score)) +
 
 
 
-## Legacy Dorothea VIPER plots
+## Legacy CollecTRI VIPER plots
 
-Here, we also have dorothea enrichments as described in the original dorothea publications.
-Instead of using decoupleRs wmean we use viper for inferring TF activites. 
+Here, we also have TF enrichments using the collectri network.
+We use viper for inferring TF activities. 
 
-```{r Viper Dorothea, echo=FALSE}
-viper_net <- net
-#colnames(viper_net) <- colnames(dorothea_mm)
-
-tf_activities_stat <- decoupleR::run_viper(diffexp_matrix[,"stat"], viper_net,
+```{r Viper CollecTRI, echo=FALSE}
+tf_activities_stat <- decoupleR::run_viper(diffexp_matrix[,"stat"], net,
     minsize = 5, eset.filter = FALSE,
     cores = 1, verbose = F, nes = TRUE
 )
@@ -283,12 +316,12 @@ NES_plot
 ```
 
 ```{r, eval = F}
+# Alternative approach using run_viper on normalized counts
+# This section is kept for reference but not evaluated by default
 tf_activities_counts <-
-  dorothea::run_viper(Normalized_counts, regulons,
-    options = list(
-      minsize = 5, eset.filter = FALSE,
-      cores = 1, verbose = FALSE, method = c("scale")
-    )
+  decoupleR::run_viper(Normalized_counts, net,
+    minsize = 5, eset.filter = FALSE,
+    cores = 1, verbose = FALSE
   )
 
 tf_activities_counts_filter <- tf_activities_counts %>%

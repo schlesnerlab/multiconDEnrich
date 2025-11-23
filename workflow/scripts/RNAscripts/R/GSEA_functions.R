@@ -37,8 +37,35 @@ get_entrezgene_vector <- function(gene_tb, input_type = "SYMBOL", org_db) {
   eg <- get_entrezgenes_from_ensembl(gene_tb[, 1], input_type, org_db = org_db)
   rownames(gene_tb) <- gene_tb[, 1]
   gene_tb <- gene_tb[eg[, 1], ]
-  gene_ranks <- stats::setNames(gene_tb[, 2], nm = eg$ENTREZID) %>%
-    sort(decreasing = TRUE)
+  
+  # Create named vector
+  gene_ranks <- stats::setNames(gene_tb[, 2], nm = eg$ENTREZID)
+  
+  # Handle duplicates by keeping the one with maximum absolute value
+  if (any(duplicated(names(gene_ranks)))) {
+    dup_count <- sum(duplicated(names(gene_ranks)))
+    message(sprintf("Found %d duplicate ENTREZID mappings, keeping max absolute value", dup_count))
+    
+    # Convert to data frame for easier manipulation
+    gene_ranks_df <- data.frame(
+      entrez = names(gene_ranks), 
+      stat = as.numeric(gene_ranks), 
+      stringsAsFactors = FALSE
+    )
+    
+    # Keep the entry with maximum absolute value for each duplicate ENTREZID
+    gene_ranks_df <- gene_ranks_df %>%
+      dplyr::group_by(entrez) %>%
+      dplyr::slice_max(order_by = abs(stat), n = 1, with_ties = FALSE) %>%
+      dplyr::ungroup()
+    
+    # Recreate named vector
+    gene_ranks <- stats::setNames(gene_ranks_df$stat, nm = gene_ranks_df$entrez)
+  }
+  
+  # Sort in decreasing order
+  gene_ranks <- sort(gene_ranks, decreasing = TRUE)
+  
   gene_ranks
 }
 
@@ -112,8 +139,31 @@ gsea_test <- function(DE_genes, T2G, input_type = "gene_symbol", ...) {
    
     T2G[, 2] <- stringr::str_extract(string = T2G %>% dplyr::pull(2), "^ENS[A-Z0-9]*")
   }
-  glist <- stats::setNames(DE_genes[, 2], nm = DE_genes[, 1]) %>%
-    sort(decreasing = TRUE)
+  
+  # Create named vector and handle duplicates
+  glist <- stats::setNames(DE_genes[, 2], nm = DE_genes[, 1])
+  
+  # Check for duplicates and handle them by keeping the max absolute value
+  if (any(duplicated(names(glist)))) {
+    dup_count <- sum(duplicated(names(glist)))
+    message(sprintf("Found %d duplicate gene names, keeping the one with max absolute value", dup_count))
+    
+    # Convert to data frame for easier manipulation
+    glist_df <- data.frame(gene = names(glist), stat = as.numeric(glist), stringsAsFactors = FALSE)
+    
+    # Keep the entry with maximum absolute value for each duplicate
+    glist_df <- glist_df %>%
+      dplyr::group_by(gene) %>%
+      dplyr::slice_max(order_by = abs(stat), n = 1, with_ties = FALSE) %>%
+      dplyr::ungroup()
+    
+    # Recreate named vector
+    glist <- stats::setNames(glist_df$stat, nm = glist_df$gene)
+  }
+  
+  # Sort in decreasing order
+  glist <- sort(glist, decreasing = TRUE)
+  
   enrichment_result <- clusterProfiler::GSEA(
     geneList = glist,
     TERM2GENE = as.data.frame(T2G),
@@ -238,9 +288,40 @@ run_gsea_query <- function(gsea_genes, de_genes, gset_name,
     # Convert gene symbols to ENSEMBL IDs using named list t_table
     if (!is.null(t_table)) {
       ensembl_senes <- senescence_genes
-      ensembl_senes[,2] <- t_table[as.character(ensembl_senes %>% dplyr::pull(2))] %>% as.character()
-      # remove all rows where no ENSEMBL ID was found (NULL in second column)
-      ensembl_senes <- ensembl_senes %>% dplyr::filter(!(ensembl_senes[,2])== "NULL")
+      
+      # Get gene symbols from column 2
+      gene_symbols <- as.character(ensembl_senes[, 2])
+      
+      # Use named list t_table to translate (it's a list, not a data frame)
+      # For each gene symbol, look up the corresponding ENSEMBL ID(s)
+      translated_ids <- sapply(gene_symbols, function(gene_sym) {
+        if (gene_sym %in% names(t_table)) {
+          # Get the translation - if multiple IDs, take the first one
+          ids <- t_table[[gene_sym]]
+          if (length(ids) > 0 && !is.null(ids)) {
+            return(as.character(ids[1]))
+          }
+        }
+        return(NA_character_)
+      })
+      
+      # Replace column 2 with translated ENSEMBL IDs
+      ensembl_senes[, 2] <- translated_ids
+      
+      # Remove rows where no ENSEMBL ID was found (NA values)
+      # Use drop=FALSE to ensure we keep a data frame
+      valid_rows <- !is.na(ensembl_senes[, 2])
+      ensembl_senes <- ensembl_senes[valid_rows, , drop = FALSE]
+      
+      # Check if we have any genes left after translation
+      if (nrow(ensembl_senes) == 0) {
+        warning("No senescence genes could be translated to ENSEMBL IDs. Returning NULL.")
+        return(NULL)
+      }
+      
+      message(sprintf("Translated %d/%d senescence genes to ENSEMBL IDs", 
+                      nrow(ensembl_senes), length(gene_symbols)))
+      
       senescence_genes <- ensembl_senes
     }
     # Run GSEA

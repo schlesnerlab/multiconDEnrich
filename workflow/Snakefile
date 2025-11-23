@@ -122,6 +122,7 @@ if config["glmmseq"]:
         [
             join(BASE_ANALYSIS_DIR, "glmmseq/enrichment.html"),
             join(BASE_ANALYSIS_DIR, "glmmseq/qc.html"),
+            join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_results.csv"),
             expand(
                 join(BASE_ANALYSIS_DIR, "glmmseq/{var}_heatmaps.png"),
                 var=config["glmmseq"]["test_group"].keys(),

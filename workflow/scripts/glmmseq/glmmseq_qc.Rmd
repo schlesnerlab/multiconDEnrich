@@ -72,7 +72,7 @@ library(dplyr)
 library(patchwork)
 if (exists("snakemake")) {
     glmmseq_obj <- snakemake@input[["glmmseq_obj"]]
-    glmmseq_refit <- snakemake@input[["glmmseq_refit"]]
+#    glmmseq_refit <- snakemake@input[["glmmseq_refit"]]
 } else { 
 
 }

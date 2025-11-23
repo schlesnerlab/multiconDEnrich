@@ -15,7 +15,7 @@ rule batch_correct:
     log:
         "logs/glmmseq/batch_correct.log",
     resources:
-        mem_mb=8*8192,
+        mem_mb=8 * 8192,
         runtime=59,
     threads: 4
     script:
@@ -47,7 +47,7 @@ rule run_glmmseq:
         uncorrected_counts=join(BASE_ANALYSIS_DIR, "counts/uncorrected_counts.rds"),
     output:
         glmmseq_obj=join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_obj.rds.gz"),
-        glmmseq_refit=join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_refit.rds.gz"),
+    #   glmmseq_refit=join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_refit.rds.gz"),
     params:
         formula=config["glmmseq"]["formula"],
     conda:
@@ -55,7 +55,7 @@ rule run_glmmseq:
     log:
         "logs/glmmseq/run_glmmseq.log",
     resources:
-        mem_mb=16384,
+        mem_mb=2 * 16384,
         time_min=59,
     threads: 12
     script:
@@ -65,7 +65,7 @@ rule run_glmmseq:
 rule run_glmmseq_qc:
     input:
         glmmseq_obj=join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_obj.rds.gz"),
-        glmmseq_refit=join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_refit.rds.gz"),
+    #     glmmseq_refit=join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_refit.rds.gz"),
     output:
         rmd_script=join(BASE_ANALYSIS_DIR, "glmmseq/qc.html"),
     conda:
@@ -149,3 +149,23 @@ rule glmmseq_heatmap:
     threads: 1
     script:
         "../scripts/glmmseq/glmmseq_heatmaps.R"
+
+
+rule export_glmmseq_results:
+    input:
+        glmmseq_obj=join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_obj.rds.gz"),
+    output:
+        results_csv=join(BASE_ANALYSIS_DIR, "glmmseq/glmmseq_results.csv"),
+    params:
+        test_groups=config["glmmseq"]["test_group"],
+        reference_groups=config["glmmseq"]["reference_group"],
+    conda:
+        "../envs/R_4.yaml"
+    log:
+        "logs/glmmseq/export_glmmseq_results.log",
+    resources:
+        mem_mb=8192,
+        time_min=59,
+    threads: 1
+    script:
+        "../scripts/glmmseq/export_glmmseq_results.R"

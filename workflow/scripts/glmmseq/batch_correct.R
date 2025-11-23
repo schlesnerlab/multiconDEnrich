@@ -1,77 +1,54 @@
 library(sva)
 library(readr)
 library(DESeq2)
-library(biomaRt)
-biomartCacheClear()
-stable_get_bm <- function(species, host_url = "https://nov2020.archive.ensembl.org") {
-    mart <- "www"
-    rounds <- 0
-    while (class(mart)[[1]] != "Mart") {
-        mart <- tryCatch(
-            {
-                # done here, because error function does not
-                # modify outer scope variables, I tried
-                if (mart == "www") rounds <- rounds + 1
-                # equivalent to useMart, but you can choose
-                # the mirror instead of specifying a host
-                biomaRt::useEnsembl(
-                    biomart = "ENSEMBL_MART_ENSEMBL",
-                    dataset = glue::glue("{species}_gene_ensembl"),
-                    mirror = mart,
-                    host = host_url
-                )
-            },
-            error = function(e) {
-                # change or make configurable if you want more or
-                # less rounds of tries of all the mirrors
-                if (rounds >= 3) {
-                    stop()
-                }
-                # hop to next mirror
-                mart <- switch(mart,
-                               useast = "uswest",
-                               uswest = "asia",
-                               asia = "www",
-                               www = {
-                                   # wait before starting another round through the mirrors,
-                                   # hoping that intermittent problems disappear
-                                   Sys.sleep(30)
-                                   "useast"
-                               },
-                               host = host_url
-                )
-            }
-        )
-    }
-    mart
-}
+library(AnnotationDbi)
+library(org.Mm.eg.db)  # for mouse
+library(org.Hs.eg.db)  # for human
 
-
-#' ENSEMBL IDs to ENSEMBL Gene symbol
+#' ENSEMBL IDs to Gene Symbol using AnnotationDbi
 #'
 #' @param ens_id_vector Vector of Ensembl IDs. Version numbers removed via regex
-#' @param organism_name Name of organism as used in ensembl "mmusculus" 
-#' @return
+#' @param organism Name of organism: "mouse" or "human"
+#' @return Named vector of gene symbols
 #' @export
 #'
 #' @examples
-ensembl_to_symbol <- function(ens_id_vector, organism_name = "mmusculus") {
-    ens_short <- stringr::str_extract(ens_id_vector,
-                                      pattern = "^ENS[A-Z0-9]*")
-    mart <- biomaRt::useEnsembl(  biomart = "ENSEMBL_MART_ENSEMBL",
-                                  dataset = glue::glue("{organism_name}_gene_ensembl"),
-                                  host = "https://nov2020.archive.ensembl.org")
-    g2g <- biomaRt::getBM(
-        attributes = c( "ensembl_gene_id",
-                        "external_gene_name"),
-        filters = "ensembl_gene_id",
-        values = ens_short,
-        mart = mart,  
-    )
-    symbol_vec <- setNames(ens_short, nm = ens_short)
-    symbol_vec[g2g$ensembl_gene_id] <- g2g$external_gene_name
+ensembl_to_symbol <- function(ens_id_vector, organism = "mouse") {
+    # Remove version numbers from ENSEMBL IDs
+    ens_short <- stringr::str_extract(ens_id_vector, pattern = "^ENS[A-Z0-9]*")
     
-    symbol_vec
+    # Select appropriate database
+    if (organism == "mouse") {
+        db <- org.Mm.eg.db
+    } else if (organism == "human") {
+        db <- org.Hs.eg.db
+    } else {
+        stop("Organism must be 'mouse' or 'human'")
+    }
+    
+    # Initialize output vector with ENSEMBL IDs as default
+    symbol_vec <- setNames(ens_short, nm = ens_short)
+    
+    # Map ENSEMBL IDs to gene symbols
+    mapped <- AnnotationDbi::mapIds(
+        db,
+        keys = ens_short,
+        column = "SYMBOL",
+        keytype = "ENSEMBL",
+        multiVals = "first"
+    )
+    
+    # Replace successfully mapped IDs, keep ENSEMBL ID for unmapped
+    mapped[is.na(mapped)] <- names(mapped)[is.na(mapped)]
+    symbol_vec[names(mapped)] <- mapped
+    
+    # Report mapping statistics
+    n_mapped <- sum(!is.na(mapped) & mapped != names(mapped))
+    message(sprintf("Mapped %d/%d genes to symbols (%.1f%%)", 
+                    n_mapped, length(ens_short), 
+                    100 * n_mapped / length(ens_short)))
+    
+    return(symbol_vec)
 }
 
 # snakemake Boilerplate

@@ -8,11 +8,21 @@ run_gsea_glmmseq <- function(fixed_eff,
                              cate = "H",
                              subcat = NULL,
                              custom_geneset = NULL) {
+  # Debug: check rownames
+  cat(sprintf("Processing %s (coef: %s)\n", fixed_eff, coef))
+  cat(sprintf("Total genes: %d\n", nrow(glmmseq_obj@stats$coef)))
+  cat(sprintf("Genes with NA rownames: %d\n", sum(is.na(rownames(glmmseq_obj@stats$coef)))))
+  cat(sprintf("Genes with empty rownames: %d\n", sum(rownames(glmmseq_obj@stats$coef) == "")))
+  
   out_dat <-
     gsea_input <- tibble(gene_symbol = rownames(glmmseq_obj@stats$coef),
                          score = glmmseq_obj@stats$coef[, coef]) %>%
+    # Remove NA and empty gene symbols
+    dplyr::filter(!is.na(gene_symbol), gene_symbol != "", is.finite(score)) %>%
     dplyr::arrange(desc(score)) %>% # remove duplicate gene symobls
     distinct(gene_symbol, .keep_all = TRUE)
+  
+  cat(sprintf("Genes after filtering for coefficient ranking: %d\n", nrow(gsea_input)))
 
   gsea_pval <-
     tibble(
@@ -20,8 +30,12 @@ run_gsea_glmmseq <- function(fixed_eff,
       score = glmmseq_obj@stats$coef[, coef] *
         -log10(glmmseq_obj@stats$pvals[, fixed_eff])
     ) %>%
+    # Remove NA and empty gene symbols
+    dplyr::filter(!is.na(gene_symbol), gene_symbol != "", is.finite(score)) %>%
     dplyr::arrange(desc(score)) |>
     distinct(gene_symbol, .keep_all = TRUE)
+  
+  cat(sprintf("Genes after filtering for pval ranking: %d\n", nrow(gsea_pval)))
   gsea_input$score[gsea_input$score == Inf] <-
     max(gsea_input$score[gsea_input$score < Inf], na.rm = TRUE)
   gsea_pval$score[gsea_pval$score == Inf] <-
@@ -42,18 +56,38 @@ run_gsea_glmmseq <- function(fixed_eff,
   #gsea_pval <- gsea_pval[is.finite(gsea_pval$score), ]
   #gsea_input <- gsea_input[is.finite(gsea_input$score), ]
   
-  gsea_res <-
-    RNAscripts::run_msig_enricher(
-      gset_list = list(gsea_input, gsea_pval),
-      category = cate,
-      subcategory = subcat,
-      pvalueCutoff = 0.05,  
-      custom_geneset = custom_geneset,
-    )
+  # Final check before GSEA
+  cat(sprintf("Final gene counts - coef: %d, pval: %d\n", 
+              nrow(gsea_input), nrow(gsea_pval)))
   
-  names(gsea_res) <- c("coef", "pvalue")
-  #names(out_dat) <- names(test_groups)
-  gsea_res
+  # Check for duplicates
+  if (any(duplicated(gsea_input$gene_symbol))) {
+    cat("Warning: duplicated gene symbols found in gsea_input\n")
+  }
+  if (any(duplicated(gsea_pval$gene_symbol))) {
+    cat("Warning: duplicated gene symbols found in gsea_pval\n")
+  }
+  
+  tryCatch({
+    gsea_res <-
+      RNAscripts::run_msig_enricher(
+        gset_list = list(gsea_input, gsea_pval),
+        category = cate,
+        subcategory = subcat,
+        pvalueCutoff = 0.05,  
+        custom_geneset = custom_geneset,
+      )
+    
+    names(gsea_res) <- c("coef", "pvalue")
+    gsea_res
+  }, error = function(e) {
+    cat(sprintf("Error in run_msig_enricher: %s\n", e$message))
+    cat("First few rows of gsea_input:\n")
+    print(head(gsea_input))
+    cat("\nFirst few rows of gsea_pval:\n")
+    print(head(gsea_pval))
+    stop(e)
+  })
 }
 
 run_gsea_across_genesets <- function(glmmseq_obj, gset_config) {

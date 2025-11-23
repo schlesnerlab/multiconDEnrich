@@ -18,7 +18,7 @@ if (exists("snakemake")) {
   gsea_config <- snakemake@config[["gsea"]]
   plan(strategy = multicore, workers = snakemake@threads)
 } else {
-  conf <- yaml::read_yaml("./configs/tec_aging.yaml")
+  conf <- yaml::read_yaml("./configs/glmmseq_test.yaml")
   BASE_ANALYSIS_DIR <- file.path(conf$dirs$BASE_ANALYSIS_DIR)
 
   gsea_config <- conf$gsea
@@ -58,14 +58,43 @@ if (gsea_use_stat) {
     dplyr::mutate(gsea_stat = -log10(pvalue) * logFoldChange)
 }
 
+# Sort and handle duplicates BEFORE creating gene lists
 joined_df <- joined_df %>% dplyr::arrange(desc(gsea_stat))
+
+# Check for and report duplicates
+cat(sprintf("Total rows in joined_df: %d\n", nrow(joined_df)))
+cat(sprintf("Unique gene symbols (gname): %d\n", length(unique(joined_df$gname))))
+cat(sprintf("Unique ENSEMBL IDs (gene): %d\n", length(unique(joined_df$gene))))
+
+# Create gene_list with duplicate handling
+# Keep the gene with the highest absolute gsea_stat for duplicates
 gene_list <- joined_df %>%
-  dplyr::select(c(gname, gsea_stat))
+  dplyr::group_by(gname) %>%
+  dplyr::slice_max(order_by = abs(gsea_stat), n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(c(gname, gsea_stat)) %>%
+  dplyr::arrange(desc(gsea_stat))
+
+cat(sprintf("Gene list after removing duplicates: %d\n", nrow(gene_list)))
+
+# ENSEMBL gene list should already be unique, but check anyway
 ensemblgene_list <- joined_df %>%
-  dplyr::select(c(gene, gsea_stat))
+  dplyr::group_by(gene) %>%
+  dplyr::slice_max(order_by = abs(gsea_stat), n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(c(gene, gsea_stat)) %>%
+  dplyr::arrange(desc(gsea_stat))
+
+cat(sprintf("ENSEMBL gene list after removing duplicates: %d\n", nrow(ensemblgene_list)))
+
 de_genes <- joined_df %>%
   dplyr::filter(padj < pvalue_threshold & abs(gsea_stat) > LFC_threshold) %>%
+  dplyr::group_by(gene) %>%
+  dplyr::slice_max(order_by = abs(gsea_stat), n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
   dplyr::select(c(gene, stat, gsea_stat))
+
+cat(sprintf("DE genes after removing duplicates: %d\n", nrow(de_genes)))
 
 t_table <- RNAscripts::table_to_list(joined_df, 'gname', 'gene')
 

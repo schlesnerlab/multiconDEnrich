@@ -64,10 +64,10 @@ gc()
 saveRDS(list(norm_counts = glmmseq_norm_counts
               ), glmmseq_obj )
 
-refits <- furrr::future_map(rownames(glmmseq_norm_counts@stats$res), 
-    glmmRefit, object = glmmseq_norm_counts)
-names(refits) <- rownames(glmmseq_norm_counts@stats$res)
-saveRDS(refits, glmmseq_refit)
+#refits <- furrr::future_map(rownames(glmmseq_norm_counts@stats$res), 
+#    glmmRefit, object = glmmseq_norm_counts)
+#names(refits) <- rownames(glmmseq_norm_counts@stats$res)
+#saveRDS(refits, glmmseq_refit)
 
 
 

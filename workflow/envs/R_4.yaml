@@ -10,19 +10,20 @@ dependencies:
   - bioconductor-bsgenome.hsapiens.ucsc.hg38
   - bioconductor-bsgenome.mmusculus.ucsc.mm10
   - bioconductor-bcellviper
+  - bioconductor-biomart
   - bioconductor-carnival
   - bioconductor-chipseeker
   - bioconductor-clusterprofiler
   - bioconductor-complexheatmap
   - bioconductor-decoupler
   - bioconductor-deseq2
-  #- bioconductor-dorothea
+  - bioconductor-do.db
   - bioconductor-ensembldb
   - bioconductor-enhancedvolcano
   - bioconductor-genefilter
   - bioconductor-genomicranges
-  - bioconductor-mitch
-  - bioconductor-omnipathr
+##  - bioconductor-mitch
+#  - bioconductor-omnipathr
   - bioconductor-org.hs.eg.db
   - bioconductor-org.mm.eg.db
   - bioconductor-pcatools
@@ -32,12 +33,16 @@ dependencies:
   - bioconductor-sva
   - bioconductor-txdb.mmusculus.UCSC.mm10.knownGene
   - bioconductor-viper
+  - r-base=4.4.*
   - r-babelgene
   - r-data.table
   - r-dendextend
   - r-devtools
   - r-dt
+  - r-kableExtra
   - r-furrr
+  - r-logger
+  - r-checkmate
   - r-ggnewscale
   - r-ggplot2
   - r-ggpubr
